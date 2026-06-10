@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { ZodError } from 'zod';
 import { AskEventRequestSchema, type AskEventRequest } from '../../lib/validators';
 import { streamAnswer, describeOpenAiError } from '../openai';
 
@@ -10,10 +11,14 @@ export interface AskEventHandlerConfig {
 const DEFAULT_MODEL = 'gpt-4.1-mini';
 const BODY_LIMIT = 100_000; // bytes
 
-function sendJson(res: ServerResponse, status: number, payload: unknown): void {
+export function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(payload));
+}
+
+export function formatValidationError(error: ZodError): string {
+  return `Проверьте параметры запроса: ${error.issues.map((i) => i.message).join('; ')}`;
 }
 
 function writeStreamHeaders(res: ServerResponse): void {
@@ -23,7 +28,7 @@ function writeStreamHeaders(res: ServerResponse): void {
   res.setHeader('X-Accel-Buffering', 'no');
 }
 
-function readJsonBody(req: IncomingMessage): Promise<unknown> {
+export function readJsonBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks: Buffer[] = [];
@@ -55,7 +60,7 @@ async function streamDemoAnswer(res: ServerResponse, payload: AskEventRequest): 
   writeStreamHeaders(res);
   const message =
     `⚠️ Демонстрационный режим: ключ OPENAI_API_KEY не настроен на сервере.\n\n` +
-    `Чтобы получать реальные ответы ИИ, добавьте ключ в файл .env:\n` +
+    `Чтобы получать реальные ответы ИИ, добавьте ключ в переменные окружения:\n` +
     `OPENAI_API_KEY=ваш_ключ\n\n` +
     `Ваш вопрос: «${payload.question}»\n` +
     `Событие: «${payload.eventTitle}» (${payload.year}, ${payload.category}).\n\n` +
@@ -69,14 +74,58 @@ async function streamDemoAnswer(res: ServerResponse, payload: AskEventRequest): 
 }
 
 /**
- * Framework-agnostic Node handler for POST /api/ask-event.
- * Works as Vite/Connect middleware and as an Express route. The OpenAI key
- * lives only here, on the server — it is never sent to the browser.
+ * Core responder: given a validated payload + config, streams the answer (or a
+ * graceful demo notice when no key is set). Shared by the Vite/Express handler
+ * and the Vercel serverless function. The OpenAI key never leaves the server.
  */
-export function createAskEventHandler(config: AskEventHandlerConfig) {
+export async function respondAskEvent(
+  res: ServerResponse,
+  payload: AskEventRequest,
+  config: AskEventHandlerConfig,
+): Promise<void> {
   const model = config.model?.trim() || DEFAULT_MODEL;
   const apiKey = config.apiKey?.trim();
 
+  if (!apiKey) {
+    await streamDemoAnswer(res, payload);
+    return;
+  }
+
+  const controller = new AbortController();
+  res.on('close', () => controller.abort());
+
+  try {
+    let started = false;
+    for await (const delta of streamAnswer(payload, { apiKey, model }, controller.signal)) {
+      if (!started) {
+        started = true;
+        writeStreamHeaders(res);
+      }
+      res.write(delta);
+    }
+    if (!started) {
+      writeStreamHeaders(res);
+      res.write('Не удалось сформировать ответ. Попробуйте переформулировать вопрос.');
+    }
+    res.end();
+  } catch (error) {
+    if (controller.signal.aborted) {
+      res.end();
+      return;
+    }
+    if (!res.headersSent) {
+      sendJson(res, 502, { error: describeOpenAiError(error) });
+    } else {
+      res.end();
+    }
+  }
+}
+
+/**
+ * Framework-agnostic Node handler for POST /api/ask-event.
+ * Works as Vite/Connect middleware and as an Express route.
+ */
+export function createAskEventHandler(config: AskEventHandlerConfig) {
   return async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (req.method !== 'POST') {
       res.setHeader('Allow', 'POST');
@@ -94,48 +143,10 @@ export function createAskEventHandler(config: AskEventHandlerConfig) {
 
     const parsed = AskEventRequestSchema.safeParse(body);
     if (!parsed.success) {
-      sendJson(res, 400, {
-        error: `Проверьте параметры запроса: ${parsed.error.issues
-          .map((i) => i.message)
-          .join('; ')}`,
-      });
-      return;
-    }
-    const payload = parsed.data;
-
-    // No key → graceful streamed demo notice.
-    if (!apiKey) {
-      await streamDemoAnswer(res, payload);
+      sendJson(res, 400, { error: formatValidationError(parsed.error) });
       return;
     }
 
-    const controller = new AbortController();
-    res.on('close', () => controller.abort());
-
-    try {
-      let started = false;
-      for await (const delta of streamAnswer(payload, { apiKey, model }, controller.signal)) {
-        if (!started) {
-          started = true;
-          writeStreamHeaders(res);
-        }
-        res.write(delta);
-      }
-      if (!started) {
-        writeStreamHeaders(res);
-        res.write('Не удалось сформировать ответ. Попробуйте переформулировать вопрос.');
-      }
-      res.end();
-    } catch (error) {
-      if (controller.signal.aborted) {
-        res.end();
-        return;
-      }
-      if (!res.headersSent) {
-        sendJson(res, 502, { error: describeOpenAiError(error) });
-      } else {
-        res.end();
-      }
-    }
+    await respondAskEvent(res, parsed.data, config);
   };
 }
