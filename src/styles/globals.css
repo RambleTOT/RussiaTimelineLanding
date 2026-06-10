@@ -1,0 +1,210 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================================================================
+   Design tokens — «Бумажный архив» (светлая тема)
+   HSL-тройки, которые читает tailwind.config.ts.
+   =========================================================================== */
+@layer base {
+  :root {
+    --background: 44 33% 94%; /* тёплая бумага #F4F2EC */
+    --foreground: 228 12% 11%; /* чернила #16171B */
+
+    --card: 0 0% 100%;
+    --card-foreground: 228 12% 11%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 228 12% 11%;
+
+    --primary: 22 74% 43%; /* охра/амбра #BE5A1E */
+    --primary-foreground: 40 40% 97%;
+
+    --secondary: 44 22% 90%;
+    --secondary-foreground: 228 12% 14%;
+
+    --muted: 46 20% 91%;
+    --muted-foreground: 40 6% 38%;
+
+    --accent: 208 59% 43%; /* стальной синий #2F6FB0 */
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 6 64% 46%; /* кирпич #C0392B */
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 42 18% 85%;
+    --input: 42 16% 82%;
+    --ring: 22 74% 43%;
+
+    --radius: 0.75rem;
+
+    color-scheme: light;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings:
+      'liga' 1,
+      'calt' 1;
+    /* почти незаметное тёплое свечение сверху — как лампа над архивом */
+    background-image: radial-gradient(
+      120% 80% at 50% -10%,
+      rgba(190, 90, 30, 0.05),
+      transparent 55%
+    );
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-sans;
+    text-wrap: balance;
+    letter-spacing: -0.02em;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+    color: hsl(var(--foreground));
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring/60 ring-offset-2 ring-offset-background;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(42 10% 72%) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(42 10% 74%);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: hsl(42 8% 64%);
+    background-clip: padding-box;
+  }
+}
+
+/* ===========================================================================
+   Lenis smooth-scroll integration
+   =========================================================================== */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* ===========================================================================
+   Utilities — текстура, стекло, тонкие линии
+   =========================================================================== */
+@layer utilities {
+  /* Зерно бумаги поверх фона */
+  .noise-layer {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    opacity: 0.035;
+    mix-blend-mode: multiply;
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, rgba(20, 20, 25, 0.05) 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(20, 20, 25, 0.05) 1px, transparent 1px);
+    background-size: 52px 52px;
+  }
+
+  /* Матовое стекло на светлом фоне */
+  .glass {
+    background-color: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(20, 20, 25, 0.06);
+  }
+
+  .glass-strong {
+    background-color: rgba(245, 243, 237, 0.82);
+    backdrop-filter: blur(16px) saturate(130%);
+    -webkit-backdrop-filter: blur(16px) saturate(130%);
+    border: 1px solid rgba(20, 20, 25, 0.07);
+  }
+
+  .hairline {
+    border: 1px solid rgba(20, 20, 25, 0.08);
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      rgba(20, 20, 25, 0.04) 25%,
+      rgba(20, 20, 25, 0.08) 37%,
+      rgba(20, 20, 25, 0.04) 63%
+    );
+    background-size: 400% 100%;
+    @apply animate-shimmer;
+  }
+
+  .fade-x {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 16px,
+      #000 calc(100% - 16px),
+      transparent
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      #000 16px,
+      #000 calc(100% - 16px),
+      transparent
+    );
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
